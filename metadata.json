@@ -1,0 +1,6 @@
+{
+  "name": "Member Contact Directory & Manager",
+  "description": "A streamlined contact management dashboard to filter by name, surname, or phone number, add members, make quick updates, and export to CSV.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
