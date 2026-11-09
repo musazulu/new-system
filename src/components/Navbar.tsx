@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   Users, UserPlus, Download, Upload, LayoutGrid, Table, 
-  RotateCcw, Sparkles 
+  RotateCcw, Sparkles, CopyX 
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -10,6 +10,8 @@ interface NavbarProps {
   onOpenPasteModal: () => void;
   onOpenPublicPortal: () => void;
   onExportCSV: () => void;
+  onRemoveDuplicates: () => void;
+  duplicateCount: number;
   onResetData: () => void;
   viewMode: 'table' | 'cards';
   onViewModeChange: (mode: 'table' | 'cards') => void;
@@ -21,6 +23,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenPasteModal,
   onOpenPublicPortal,
   onExportCSV,
+  onRemoveDuplicates,
+  duplicateCount,
   onResetData,
   viewMode,
   onViewModeChange
@@ -87,6 +91,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Reset Demo</span>
+          </button>
+
+          {/* Duplicate cleanup */}
+          <button
+            type="button"
+            onClick={onRemoveDuplicates}
+            title={duplicateCount > 0 ? `Remove ${duplicateCount} duplicate record${duplicateCount === 1 ? '' : 's'}` : 'Check the directory for duplicate records'}
+            className="p-2 text-slate-500 hover:text-amber-800 hover:bg-amber-50 rounded-xl border border-slate-200/80 transition-colors flex items-center gap-1.5 text-xs font-semibold"
+          >
+            <CopyX className="w-3.5 h-3.5" />
+            <span className="hidden xl:inline">{duplicateCount > 0 ? `Duplicates (${duplicateCount})` : 'Duplicates'}</span>
           </button>
 
           {/* BA Tax Clearance Portal Button */}

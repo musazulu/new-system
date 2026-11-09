@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  X, Upload, ShieldCheck, CheckCircle2, Eye, Trash2, Calendar
+  X, Upload, ShieldCheck, CheckCircle2, Eye, Trash2, Calendar, ShieldAlert
 } from 'lucide-react';
 import { Member, TaxClearanceInfo, TaxClearanceStatus } from '../types/member';
+import { verifyTaxClearanceValidity } from '../utils/taxValidation';
 
 interface TaxClearanceModalProps {
   isOpen: boolean;
@@ -24,6 +25,9 @@ export const TaxClearanceModal: React.FC<TaxClearanceModalProps> = ({
   const [imageUrl, setImageUrl] = useState<string>('');
   const [isDragging, setIsDragging] = useState(false);
   const [previewEnlarged, setPreviewEnlarged] = useState(false);
+
+  // Real-time validity check
+  const validityCheck = verifyTaxClearanceValidity(validTo);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -65,15 +69,40 @@ export const TaxClearanceModal: React.FC<TaxClearanceModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    // AUTOMATIC VALIDATION: Check if the validTo date is expired
+    const validityCheck = verifyTaxClearanceValidity(validTo);
+    
+    let finalStatus = status;
+    let finalNotes = notes.trim();
+
+    // If the validity check shows the certificate is expired, automatically reject it
+    if (validityCheck.isExpired && status === 'valid') {
+      const confirmReject = window.confirm(
+        `⚠️ WARNING: The validity period expires on ${validTo}, which has already passed.\n\n` +
+        `This certificate is EXPIRED and should be marked as "Rejected".\n\n` +
+        `Do you want to automatically reject this expired certificate?`
+      );
+      
+      if (confirmReject) {
+        finalStatus = 'rejected';
+        finalNotes = validityCheck.reason || `REJECTED: Validity Period expired on ${validTo}. Certificate is not valid.`;
+      } else {
+        // User chose not to reject, but warn them
+        if (!window.confirm('You are about to mark an EXPIRED certificate as valid. This is not recommended. Continue anyway?')) {
+          return; // Cancel the submission
+        }
+      }
+    }
+
     const info: TaxClearanceInfo = {
-      status,
+      status: finalStatus,
       certificateNumber: 'ITF263',
       taxpayerName: `${member.firstName} ${member.surname}`,
       validFrom: validFrom || undefined,
       validTo: validTo || undefined,
       imageUrl: imageUrl || undefined,
       uploadedAt: member.taxClearance?.uploadedAt || new Date().toISOString(),
-      notes: notes.trim() || undefined
+      notes: finalNotes || undefined
     };
 
     onSave(member.id, info);
@@ -256,10 +285,50 @@ export const TaxClearanceModal: React.FC<TaxClearanceModalProps> = ({
                 type="date"
                 value={validTo}
                 onChange={(e) => setValidTo(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className={`w-full px-3 py-2 rounded-xl border text-xs text-slate-900 focus:outline-none focus:ring-2 ${
+                  validityCheck.isExpired 
+                    ? 'border-rose-400 bg-rose-50 focus:ring-rose-500' 
+                    : 'border-slate-200 bg-slate-50/50 focus:ring-emerald-500'
+                }`}
               />
             </div>
           </div>
+
+          {/* Validation Warning/Success Message */}
+          {validTo && (
+            <div className={`rounded-xl p-3 border flex items-start gap-2 ${
+              validityCheck.isExpired
+                ? 'bg-rose-50 border-rose-300'
+                : 'bg-emerald-50 border-emerald-300'
+            }`}>
+              {validityCheck.isExpired ? (
+                <>
+                  <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="text-xs">
+                    <p className="font-bold text-rose-900">
+                      ⚠️ EXPIRED Certificate - Validity Period Has Passed
+                    </p>
+                    <p className="text-rose-700 mt-1">
+                      {validityCheck.reason || `This certificate expired on ${validTo}.`} 
+                      {' '}The system will automatically recommend rejection.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="text-xs">
+                    <p className="font-bold text-emerald-900">
+                      ✓ Valid Certificate - Validity Period is Active
+                    </p>
+                    <p className="text-emerald-700 mt-1">
+                      This certificate is valid until {validTo}.
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Notes */}
           <div>

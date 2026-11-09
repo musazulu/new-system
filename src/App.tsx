@@ -61,6 +61,7 @@ import {
 import { 
   exportMembersToCSV 
 } from './utils/csv';
+import { deduplicateMembers } from './utils/deduplicateMembers';
 import { 
   Download, 
   LayoutGrid, 
@@ -126,6 +127,11 @@ export default function App() {
     });
     return Array.from(set).sort();
   }, [members]);
+
+  const duplicateCount = useMemo(
+    () => deduplicateMembers(members).removedCount,
+    [members]
+  );
 
   // Filtering & Sorting pipeline
   const filteredAndSortedMembers = useMemo(() => {
@@ -229,11 +235,25 @@ export default function App() {
     setMembers((prev) => {
       const exists = prev.some((m) => m.id === member.id);
       if (exists) {
+        // Updating existing member
         addToast('success', `Updated details for ${member.firstName} ${member.surname}`);
         return prev.map((m) => (m.id === member.id ? member : m));
       } else {
-        addToast('success', `Added ${member.firstName} ${member.surname} to directory`);
-        return [member, ...prev];
+        // Adding new member - check for potential duplicates
+        const allMembers = [member, ...prev];
+        const dedupResult = deduplicateMembers(allMembers);
+        
+        if (dedupResult.removedCount > 0) {
+          // Duplicate detected and merged
+          addToast('info', 
+            `Added ${member.firstName} ${member.surname}. A similar record was found and merged automatically.`
+          );
+        } else {
+          // No duplicate, simple add
+          addToast('success', `Added ${member.firstName} ${member.surname} to directory`);
+        }
+        
+        return dedupResult.members;
       }
     });
   };
@@ -334,19 +354,47 @@ export default function App() {
 
   // CSV Import
   const handleImportMembers = (newMembers: Member[]) => {
-    setMembers((prev) => [...newMembers, ...prev]);
-    addToast('success', `Successfully imported ${newMembers.length} new contacts!`);
+    setMembers((prev) => {
+      const existing = deduplicateMembers(prev).members;
+      const result = deduplicateMembers([...newMembers, ...existing]);
+      const addedCount = result.members.length - existing.length;
+      const mergedCount = newMembers.length - addedCount;
+      addToast(
+        'success',
+        mergedCount > 0
+          ? `Imported ${addedCount} new contacts and merged ${mergedCount} duplicate${mergedCount === 1 ? '' : 's'}.`
+          : `Successfully imported ${addedCount} new contacts!`
+      );
+      return result.members;
+    });
   };
 
   // Bulk Paste Import
   const handleBulkPasteImport = (newMembers: Member[], replaceExisting: boolean) => {
     if (replaceExisting) {
-      setMembers(newMembers);
-      addToast('success', `Directory replaced with ${newMembers.length} contacts!`);
+      const result = deduplicateMembers(newMembers);
+      setMembers(result.members);
+      addToast('success', `Directory replaced with ${result.members.length} contacts${result.removedCount ? `; ${result.removedCount} duplicate${result.removedCount === 1 ? '' : 's'} merged.` : '!'} `);
     } else {
-      setMembers((prev) => [...newMembers, ...prev]);
-      addToast('success', `Added ${newMembers.length} contacts to directory!`);
+      handleImportMembers(newMembers);
     }
+  };
+
+  const handleRemoveDuplicates = () => {
+    const result = deduplicateMembers(members);
+    if (result.removedCount === 0) {
+      addToast('info', 'No duplicates found. Records are matched by phone number or email address.');
+      return;
+    }
+
+    if (!window.confirm(`Remove ${result.removedCount} duplicate record${result.removedCount === 1 ? '' : 's'}? The most complete record will be kept and missing details will be merged.`)) {
+      return;
+    }
+
+    const remainingIds = new Set(result.members.map((member) => member.id));
+    setMembers(result.members);
+    setSelectedIds((prev) => prev.filter((id) => remainingIds.has(id)));
+    addToast('success', `Removed ${result.removedCount} duplicate record${result.removedCount === 1 ? '' : 's'} and retained their available details.`);
   };
 
   // Reset sample demo data
@@ -407,6 +455,8 @@ export default function App() {
         onOpenPasteModal={() => setIsPasteModalOpen(true)}
         onOpenPublicPortal={() => setIsPublicPortalOpen(true)}
         onExportCSV={handleExportAllOrFiltered}
+        onRemoveDuplicates={handleRemoveDuplicates}
+        duplicateCount={duplicateCount}
         onResetData={handleResetData}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
